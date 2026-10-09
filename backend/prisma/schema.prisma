@@ -1,0 +1,73 @@
+// Схема БД AI Travel Planner (Prisma 7 + SQLite).
+// Типы TransportMode / LocationType хранятся строками: SQLite не поддерживает enum на уровне БД,
+// допустимые значения задаются в /shared/types.ts.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trips Trip[]
+}
+
+model Trip {
+  id          String   @id @default(cuid())
+  title       String
+  destination String
+  startDate   DateTime
+  endDate     DateTime
+  /// Интересы пользователя в свободной форме.
+  preferences String?
+  /// JSON-массив названий дней (индекс = dayNumber - 1).
+  dayTitles   String?
+  /// Маршрут добавлен пользователем в «Мои маршруты».
+  saved       Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  items ItineraryItem[]
+
+  @@index([userId])
+  @@index([saved, updatedAt])
+}
+
+model ItineraryItem {
+  id        String  @id @default(cuid())
+  /// Номер дня поездки (начиная с 1).
+  dayNumber Int
+  /// Порядок посещения в рамках дня (начиная с 0).
+  order     Int
+  /// Время в формате "HH:mm".
+  startTime String
+  endTime   String?
+  transport String  @default("walk")
+  notes     String?
+
+  locationName        String
+  locationDescription String
+  locationType        String
+  locationAddress     String?
+  lat                 Float
+  lng                 Float
+  /// Координаты подтверждены геокодером Nominatim.
+  geocoded            Boolean @default(false)
+
+  tripId String
+  trip   Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId, dayNumber, order])
+}
