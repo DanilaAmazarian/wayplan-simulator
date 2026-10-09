@@ -43,6 +43,19 @@ npm run dev:backend    # API на http://localhost:4000
 npm run dev:frontend   # интерфейс на http://localhost:3000
 ```
 
+## Запуск в Docker
+
+```bash
+cp backend/.env.example backend/.env   # ключи ИИ-провайдера, как и для локального запуска
+docker compose up --build -d
+```
+
+- Интерфейс: http://localhost:3000, API: http://localhost:4000.
+- Если порты заняты, задайте другие: `FRONTEND_PORT=3100 BACKEND_PORT=4100 docker compose up --build -d` (в PowerShell — через `$env:FRONTEND_PORT=3100` перед командой). Адрес API встраивается во фронтенд при сборке, поэтому после смены `BACKEND_PORT` нужен `--build`.
+- База SQLite хранится в томе `backend-data` и переживает пересоздание контейнеров. Миграции применяются автоматически при старте бэкенда.
+- Ключи из `backend/.env` передаются в контейнер как переменные окружения и в образ не попадают.
+- Остановить: `docker compose down`; удалить вместе с базой: `docker compose down -v`.
+
 ## Настройки
 
 ### Бэкенд (`backend/.env`)

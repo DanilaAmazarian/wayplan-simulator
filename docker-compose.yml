@@ -1,0 +1,37 @@
+name: wayplan-simulator
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: wayplan-simulator/backend
+    env_file:
+      - path: backend/.env
+        required: false
+    environment:
+      PORT: 4000
+      DATABASE_URL: file:/data/wayplan.db
+    volumes:
+      - backend-data:/data
+    ports:
+      - "${BACKEND_PORT:-4000}:4000"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        # Запросы к API идут из браузера, поэтому адрес — внешний порт бэкенда на хосте
+        NEXT_PUBLIC_API_URL: http://localhost:${BACKEND_PORT:-4000}
+    image: wayplan-simulator/frontend
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  backend-data:
