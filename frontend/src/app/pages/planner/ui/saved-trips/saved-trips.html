@@ -1,0 +1,54 @@
+<section>
+  <header>
+    <tui-icon icon="@tui.bookmark" />
+    <h2>{{ i18n.messages().savedTrips.title }}</h2>
+    @if (trips(); as list) {
+      @if (list.length > 0) {
+        <span>{{ list.length }}</span>
+      }
+    }
+  </header>
+
+  @if (trips() === null) {
+    <div class="skeletons">
+      <div class="bone" [tuiSkeleton]="true"></div>
+      <div class="bone" [tuiSkeleton]="true"></div>
+    </div>
+  } @else if (trips()?.length === 0) {
+    <p class="empty">{{ i18n.messages().savedTrips.empty }}</p>
+  } @else {
+    <ul>
+      @for (trip of trips(); track trip.id) {
+        <li>
+          <button type="button" class="open" (click)="openTrip.emit(trip.id)">
+            <span class="pin"><tui-icon icon="@tui.map-pin" /></span>
+            <span class="text">
+              <span class="title" [title]="trip.title">{{ trip.title }}</span>
+              <span class="sub">
+                <tui-icon icon="@tui.calendar-days" />
+                {{ trip.destination }} · {{ days(trip.daysCount) }} · {{ points(trip.itemsCount) }} · {{ formatSavedAt(trip.updatedAt) }}
+              </span>
+            </span>
+            <tui-icon icon="@tui.chevron-right" />
+          </button>
+          @if (confirmId() === trip.id) {
+            <button tuiButton appearance="negative" size="xs" type="button" (click)="confirmDelete(trip.id)">
+              {{ i18n.messages().savedTrips.confirmDelete }}
+            </button>
+          } @else {
+            <button
+              tuiIconButton
+              appearance="flat"
+              size="s"
+              type="button"
+              iconStart="@tui.trash-2"
+              [attr.aria-label]="deleteLabel(trip.title)"
+              [title]="i18n.messages().savedTrips.deleteTitle"
+              (click)="askDelete(trip.id)"
+            ></button>
+          }
+        </li>
+      }
+    </ul>
+  }
+</section>

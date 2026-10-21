@@ -1,4 +1,5 @@
-import type { Coordinates } from '@travel/shared';
+import type { Coordinates, Locale } from '@travel/shared';
+import { isAbortError, throwIfAborted } from '../errors.js';
 import { haversineKm } from './geo.js';
 import type { GeneratedItinerary } from './openai.js';
 
@@ -30,17 +31,35 @@ interface GeoResult {
   boundingBox: [number, number, number, number];
 }
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason ?? new DOMException('The operation was aborted.', 'AbortError'));
+      return;
+    }
+    const timer = setTimeout(finish, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason ?? new DOMException('The operation was aborted.', 'AbortError'));
+    };
+    function finish() {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
 
 const cache = new Map<string, GeoResult | null>();
 let queue: Promise<unknown> = Promise.resolve();
 let lastRequestAt = 0;
 
 /** Глобальная очередь: запросы выполняются строго последовательно с паузой ≥ 1 с. */
-function schedule<T>(task: () => Promise<T>): Promise<T> {
+function schedule<T>(task: () => Promise<T>, signal?: AbortSignal): Promise<T> {
   const run = queue.then(async () => {
+    throwIfAborted(signal);
     const wait = lastRequestAt + MIN_INTERVAL_MS - Date.now();
-    if (wait > 0) await sleep(wait);
+    if (wait > 0) await sleep(wait, signal);
+    throwIfAborted(signal);
     try {
       return await task();
     } finally {
@@ -51,15 +70,21 @@ function schedule<T>(task: () => Promise<T>): Promise<T> {
   return run;
 }
 
-async function search(query: string, viewbox?: GeoResult['boundingBox']): Promise<GeoResult | null> {
-  const cacheKey = `${query.toLowerCase()}|${viewbox?.join(',') ?? ''}`;
+async function search(
+  query: string,
+  locale: Locale,
+  viewbox?: GeoResult['boundingBox'],
+  signal?: AbortSignal,
+): Promise<GeoResult | null> {
+  throwIfAborted(signal);
+  const cacheKey = `${locale}|${query.toLowerCase()}|${viewbox?.join(',') ?? ''}`;
   if (cache.has(cacheKey)) return cache.get(cacheKey)!;
 
   const params = new URLSearchParams({
     q: query,
     format: 'jsonv2',
     limit: '1',
-    'accept-language': 'ru,en',
+    'accept-language': locale,
   });
   if (viewbox) {
     const [south, north, west, east] = viewbox;
@@ -69,7 +94,9 @@ async function search(query: string, viewbox?: GeoResult['boundingBox']): Promis
   const result = await schedule(async () => {
     const res = await fetch(`${BASE_URL}/search?${params}`, {
       headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      signal: signal
+        ? AbortSignal.any([AbortSignal.timeout(REQUEST_TIMEOUT_MS), signal])
+        : AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     if (!res.ok) throw new Error(`Nominatim ответил ${res.status}`);
     const places = (await res.json()) as NominatimPlace[];
@@ -80,16 +107,22 @@ async function search(query: string, viewbox?: GeoResult['boundingBox']): Promis
       displayName: place.display_name,
       boundingBox: place.boundingbox.map(Number) as GeoResult['boundingBox'],
     };
-  });
+  }, signal);
 
   cache.set(cacheKey, result);
   return result;
 }
 
-async function safeSearch(query: string, viewbox?: GeoResult['boundingBox']): Promise<GeoResult | null> {
+async function safeSearch(
+  query: string,
+  locale: Locale,
+  viewbox: GeoResult['boundingBox'] | undefined,
+  signal?: AbortSignal,
+): Promise<GeoResult | null> {
   try {
-    return await search(query, viewbox);
+    return await search(query, locale, viewbox, signal);
   } catch (err) {
+    if (signal?.aborted || isAbortError(err)) throw err;
     console.warn(`[geocoder] "${query}": ${(err as Error).message}`);
     return null;
   }
@@ -108,21 +141,26 @@ export interface GeocodeStats {
 export async function refineCoordinates(
   itinerary: GeneratedItinerary,
   destination: string,
+  locale: Locale,
+  signal?: AbortSignal,
 ): Promise<GeocodeStats> {
   const items = itinerary.days.flatMap((d) => d.items);
   const stats: GeocodeStats = { total: items.length, geocoded: 0 };
   if (process.env.GEOCODER_ENABLED === '0' || items.length === 0) return stats;
 
-  const city = await safeSearch(destination);
+  throwIfAborted(signal);
+  const city = await safeSearch(destination, locale, undefined, signal);
 
   for (const item of items) {
+    throwIfAborted(signal);
     const { name, address } = item.location;
     const queries = [`${name}, ${destination}`, address ? `${address}, ${destination}` : null].filter(
       (q): q is string => q !== null,
     );
 
     for (const query of queries) {
-      const found = await safeSearch(query, city?.boundingBox);
+      throwIfAborted(signal);
+      const found = await safeSearch(query, locale, city?.boundingBox, signal);
       if (!found) continue;
       if (city && haversineKm(found.coordinates, city.coordinates) > MAX_DISTANCE_FROM_CITY_KM) continue;
 

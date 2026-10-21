@@ -1,5 +1,6 @@
-import type { GenerateTripRequest } from '@travel/shared';
+import { isLocale, type GenerateTripRequest } from '@travel/shared';
 import type { GeneratedItem, GeneratedItinerary } from './openai.js';
+import { dayTitle, mockTitle } from './phrases.js';
 
 /** Демо-точки (Рим) для разработки без обращения к OpenAI (OPENAI_MOCK=1). */
 const ROME_POOL: GeneratedItem['location'][] = [
@@ -29,12 +30,13 @@ const SLOTS: [string, string][] = [
 ];
 
 export function mockItinerary(req: GenerateTripRequest): GeneratedItinerary {
+  const locale = isLocale(req.locale) ? req.locale : 'ru';
   const perDay = SLOTS.length;
   return {
-    title: `${req.destination}: демо-маршрут на ${req.durationDays} дн.`,
+    title: mockTitle(locale, req.destination, req.durationDays),
     days: Array.from({ length: req.durationDays }, (_, d) => ({
       dayNumber: d + 1,
-      title: `День ${d + 1}`,
+      title: dayTitle(locale, d + 1),
       items: SLOTS.map(([startTime, endTime], i) => ({
         startTime,
         endTime,

@@ -1,0 +1,71 @@
+@if (trip().days.length === 0) {
+  <p class="empty">{{ i18n.messages().timeline.empty }}</p>
+} @else {
+  <div class="tabs">
+    <tui-tabs [activeItemIndex]="activeIndex()" (activeItemIndexChange)="onIndexChange($event)">
+      @for (day of trip().days; track day.dayNumber) {
+        <button tuiTab type="button" [style.--day]="color(day.dayNumber)">
+          <span class="dot"></span>
+          {{ dayTitle(day.dayNumber) }}
+        </button>
+      }
+    </tui-tabs>
+  </div>
+
+  @if (current(); as day) {
+    <section class="day" [style.--day]="color(day.dayNumber)">
+      <header>
+        <p class="date">{{ dateLabel(day.date) }}</p>
+        <h3>{{ day.title || dayTitle(day.dayNumber) }}</h3>
+        <p class="stats">
+          <span><tui-icon icon="@tui.route" /> {{ pointLabel(day.items.length) }} · ≈ {{ totalKm(day).toFixed(1) }} {{ i18n.messages().units.km }}</span>
+          <span><tui-icon icon="@tui.map-pin-check" /> OSM: {{ geocodedCount(day) }}/{{ day.items.length }}</span>
+        </p>
+      </header>
+
+      <ol>
+        @for (item of day.items; track item.id; let index = $index) {
+          <li>
+            <span class="index">{{ index + 1 }}</span>
+            <article
+              class="card"
+              role="button"
+              tabindex="0"
+              [attr.aria-pressed]="item.id === selectedItemId()"
+              [class.selected]="item.id === selectedItemId()"
+              (click)="itemSelect.emit(item.id)"
+              (keydown)="onCardKey($event, item.id)"
+            >
+              <div class="card-head">
+                <div>
+                  <p class="time">
+                    <tui-icon icon="@tui.clock" />
+                    {{ item.startTime }}{{ item.endTime ? ' – ' + item.endTime : '' }}
+                  </p>
+                  <h4>{{ item.location.name }}</h4>
+                </div>
+                <span tuiBadge appearance="neutral" size="s" [style.background]="meta(item).color + '1a'" [style.color]="meta(item).color">
+                  {{ meta(item).emoji }} {{ meta(item).label }}
+                </span>
+              </div>
+              <p class="description">{{ item.location.description }}</p>
+              <div class="meta">
+                @if (index > 0) {
+                  <span>{{ legText(day, index) }}</span>
+                }
+                @if (item.location.address) {
+                  <span class="address"><tui-icon icon="@tui.map-pin" /> {{ item.location.address }}</span>
+                }
+                @if (item.location.geocoded) {
+                  <span tuiBadge appearance="positive" size="s" [title]="i18n.messages().timeline.osmTitle">OSM</span>
+                } @else {
+                  <span tuiBadge appearance="warning" size="s" [title]="i18n.messages().timeline.aiTitle">{{ i18n.messages().timeline.aiBadge }}</span>
+                }
+              </div>
+            </article>
+          </li>
+        }
+      </ol>
+    </section>
+  }
+}

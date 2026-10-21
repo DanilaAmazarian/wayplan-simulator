@@ -1,0 +1,63 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.25rem;
+  border: 1px solid var(--tui-border-normal, #e5e7eb);
+  border-radius: 1rem;
+  background: var(--tui-background-elevation-1, #fff);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+}
+
+h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+header p {
+  margin: 0.35rem 0 0;
+  color: var(--tui-text-secondary, #667);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.days-label,
+.scale {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.days-label span,
+.scale {
+  color: var(--tui-text-secondary, #667);
+  font-size: 0.85rem;
+}
+
+.days-label span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.days-label strong {
+  padding: 0.1rem 0.5rem;
+  border-radius: 0.4rem;
+  background: var(--tui-background-neutral-1, #eef2ff);
+  color: var(--tui-text-primary, #1b1f3b);
+}
+
+.days {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+button {
+  width: 100%;
+}

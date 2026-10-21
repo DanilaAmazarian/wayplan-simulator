@@ -24,7 +24,7 @@ services:
       dockerfile: frontend/Dockerfile
       args:
         # Запросы к API идут из браузера, поэтому адрес — внешний порт бэкенда на хосте
-        NEXT_PUBLIC_API_URL: http://localhost:${BACKEND_PORT:-4000}
+        API_URL: http://localhost:${BACKEND_PORT:-4000}
     image: wayplan-simulator/frontend
     ports:
       - "${FRONTEND_PORT:-3000}:3000"

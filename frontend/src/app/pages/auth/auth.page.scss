@@ -1,0 +1,19 @@
+:host {
+  display: block;
+  height: 100%;
+}
+
+.gate {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: 1.5rem;
+  background: var(--tui-background-base-alt, #f4f6f8);
+}
+
+.gate app-locale-switch {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+}

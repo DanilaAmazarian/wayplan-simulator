@@ -1,0 +1,98 @@
+<form class="card" novalidate (submit)="submit($event)">
+  <header>
+    <h2>{{ mode() === 'login' ? i18n.messages().auth.login : i18n.messages().auth.register }}</h2>
+    <p>{{ i18n.messages().auth.hint }}</p>
+  </header>
+
+  <div class="switch" role="tablist" [attr.aria-label]="i18n.messages().auth.method">
+    <button type="button" role="tab" [attr.aria-selected]="mode() === 'login'" [class.active]="mode() === 'login'" (click)="switchMode('login')">
+      {{ i18n.messages().auth.login }}
+    </button>
+    <button
+      type="button"
+      role="tab"
+      [attr.aria-selected]="mode() === 'register'"
+      [class.active]="mode() === 'register'"
+      (click)="switchMode('register')"
+    >
+      {{ i18n.messages().auth.register }}
+    </button>
+  </div>
+
+  <div class="field">
+    <tui-textfield>
+      <label tuiLabel>Email</label>
+      <input tuiInput type="email" autocomplete="email" [formField]="authForm.email" placeholder="you@example.com" />
+    </tui-textfield>
+    <tui-error [error]="fieldError(authForm.email(), emailErrors(), ['required', 'email'])" />
+  </div>
+
+  @if (mode() === 'register') {
+    <div class="field">
+      <tui-textfield>
+        <label tuiLabel>{{ i18n.messages().auth.name }}</label>
+        <input tuiInput autocomplete="name" [formField]="authForm.name" [placeholder]="i18n.messages().auth.namePlaceholder" />
+      </tui-textfield>
+      <tui-error [error]="fieldError(authForm.name(), nameErrors())" />
+    </div>
+  }
+
+  <div class="field">
+    <tui-textfield>
+      <label tuiLabel>{{ i18n.messages().auth.password }}</label>
+      <input
+        tuiInput
+        [type]="passwordVisible() ? 'text' : 'password'"
+        [attr.autocomplete]="mode() === 'login' ? 'current-password' : 'new-password'"
+        [formField]="authForm.password"
+        [placeholder]="i18n.messages().auth.passwordPlaceholder"
+      />
+      <button
+        tuiIconButton
+        appearance="icon"
+        size="s"
+        type="button"
+        [iconStart]="passwordVisible() ? '@tui.eye-off' : '@tui.eye'"
+        [attr.aria-label]="passwordVisible() ? i18n.messages().auth.hidePassword : i18n.messages().auth.showPassword"
+        [attr.aria-pressed]="passwordVisible()"
+        [disabled]="busy()"
+        (mousedown)="$event.preventDefault()"
+        (click)="togglePassword($event)"
+      ></button>
+    </tui-textfield>
+    <tui-error [error]="fieldError(authForm.password(), passwordErrors(), ['required', 'minLength', 'maxLength'])" />
+  </div>
+
+  @if (mode() === 'register') {
+    <div class="field">
+      <tui-textfield>
+        <label tuiLabel>{{ i18n.messages().auth.confirmPassword }}</label>
+        <input
+          tuiInput
+          [type]="confirmVisible() ? 'text' : 'password'"
+          autocomplete="new-password"
+          [formField]="authForm.confirmPassword"
+          [placeholder]="i18n.messages().auth.confirmPlaceholder"
+        />
+        <button
+          tuiIconButton
+          appearance="icon"
+          size="s"
+          type="button"
+          [iconStart]="confirmVisible() ? '@tui.eye-off' : '@tui.eye'"
+          [attr.aria-label]="confirmVisible() ? i18n.messages().auth.hidePassword : i18n.messages().auth.showPassword"
+          [attr.aria-pressed]="confirmVisible()"
+          [disabled]="busy()"
+          (mousedown)="$event.preventDefault()"
+          (click)="toggleConfirm($event)"
+        ></button>
+      </tui-textfield>
+      <tui-error [error]="fieldError(authForm.confirmPassword(), confirmErrors(), ['required', 'mismatch'])" />
+    </div>
+  }
+
+  <button tuiButton type="submit" size="l" [disabled]="busy() || !authForm().valid()">
+    {{ busy() ? i18n.messages().auth.wait : mode() === 'login' ? i18n.messages().auth.signIn : i18n.messages().auth.createAccount }}
+  </button>
+</form>
+

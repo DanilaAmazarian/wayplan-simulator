@@ -58,6 +58,34 @@ export interface ItineraryItem {
   notes?: string;
 }
 
+/** Остановка общественного транспорта. */
+export interface TransitStop {
+  name: string;
+  coordinates: Coordinates;
+}
+
+/**
+ * Как проехать плечо на метро, поезде, пароме или самолёте.
+ * `ride` — есть вход и выход. `same-stop` — обе точки у одной остановки, ехать не нужно.
+ * `unavailable` — расписание не нашло остановок.
+ */
+export interface TransitRide {
+  status: 'ride' | 'same-stop' | 'unavailable';
+  board?: TransitStop;
+  alight?: TransitStop;
+  /** Короткое имя линии, если оно одно на всю поездку. */
+  line?: string;
+  transfers?: TransitStop[];
+}
+
+/** Кусок плеча: подход по улицам или сама поездка. */
+export interface RouteSegment {
+  kind: 'street' | 'transit';
+  geometry?: Coordinates[];
+  /** Номер линии для транзитного куска. */
+  label?: string;
+}
+
 /** Отрезок пути между двумя соседними точками дня (для Polyline на карте). */
 export interface Route {
   from: Coordinates;
@@ -65,6 +93,11 @@ export interface Route {
   transport: TransportMode;
   distanceKm?: number;
   durationMin?: number;
+  /** Вершины пути по дорогам. Нет поля — на карте прямая между from и to. */
+  geometry?: Coordinates[];
+  ride?: TransitRide;
+  /** Если есть, карта рисует их по очереди вместо одного geometry. */
+  segments?: RouteSegment[];
 }
 
 export interface DayPlan {
@@ -88,6 +121,18 @@ export interface Trip {
   preferences?: string;
   /** Пользователь добавил маршрут в «Мои маршруты». Сгенерированные поездки по умолчанию — черновики. */
   saved: boolean;
+  /** Язык, на котором сгенерированы тексты и запрашиваются названия станций. */
+  locale: Locale;
+  /**
+   * `true` — ответ владельцу. `false` — поездка без владельца, только просмотр.
+   * В публичной ссылке поля нет.
+   */
+  owned?: boolean;
+  /**
+   * Активный токен публичной ссылки. Поле есть только в ответах владельца.
+   * `null` — ссылки нет. Публичный просмотр по `/api/share/:token` поле не отдаёт.
+   */
+  shareToken?: string | null;
   days: DayPlan[];
   createdAt: string;
   updatedAt: string;
@@ -132,6 +177,14 @@ export const TRANSPORT_MODES: readonly TransportMode[] = [
   'plane',
 ];
 
+/** Языки интерфейса и новых маршрутов. Новый язык добавляется сюда и в словари. */
+export const LOCALES = ['ru', 'en'] as const;
+export type Locale = (typeof LOCALES)[number];
+
+export function isLocale(value: unknown): value is Locale {
+  return typeof value === 'string' && (LOCALES as readonly string[]).includes(value);
+}
+
 /** Тело запроса POST /api/trips/generate. */
 export interface GenerateTripRequest {
   /** Город назначения. */
@@ -140,6 +193,8 @@ export interface GenerateTripRequest {
   durationDays: number;
   /** Интересы пользователя в свободной форме. */
   preferences?: string;
+  /** Язык текстов маршрута. Нет поля — сервер принимает русский. */
+  locale?: Locale;
 }
 
 export interface UpdateTripRequest {
@@ -147,6 +202,29 @@ export interface UpdateTripRequest {
   saved?: boolean;
 }
 
+/** Ответ POST /api/trips/:id/share. Повторный запрос возвращает тот же активный токен. */
+export interface ShareLinkResponse {
+  token: string;
+}
+
 export interface ApiError {
   error: string;
+}
+
+/** Текущий пользователь. Пароль наружу не отдаётся. */
+export interface AuthUser {
+  id: string;
+  email: string;
+  name?: string;
+}
+
+export interface RegisterRequest {
+  email: string;
+  password: string;
+  name?: string;
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
 }

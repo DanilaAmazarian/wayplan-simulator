@@ -1,0 +1,59 @@
+<div class="layout" [class.has-trip]="!!trip()" [class.panel-map]="panel() === 'map'">
+  <aside [inert]="inertPanel('route')">
+    <header>
+      <div class="brand">
+        <span class="logo"><tui-icon icon="@tui.plane" /></span>
+        <div class="titles">
+          <p>{{ i18n.messages().share.view }}</p>
+          @if (trip(); as trip) {
+            <h1>{{ trip.title }}</h1>
+          } @else {
+            <h1>{{ i18n.messages().share.fallbackTitle }}</h1>
+          }
+        </div>
+      </div>
+      <app-locale-switch />
+    </header>
+
+    <tui-scrollbar class="scroll">
+      <div class="content">
+        @if (trip(); as trip) {
+          <p class="meta">{{ dates(trip) }}</p>
+          <app-day-timeline
+            [trip]="trip"
+            [activeDay]="activeDay()"
+            [selectedItemId]="selectedItemId()"
+            (dayChange)="setActiveDay($event)"
+            (itemSelect)="selectItem($event)"
+          />
+        } @else if (loading()) {
+          <app-trip-skeleton />
+        } @else {
+          <div class="share-error">
+            <p>{{ errorText() }}</p>
+            <a tuiButton appearance="primary" size="s" iconStart="@tui.house" routerLink="/">{{ i18n.messages().share.home }}</a>
+          </div>
+        }
+      </div>
+    </tui-scrollbar>
+  </aside>
+
+  <main [inert]="inertPanel('map')">
+    @if (currentDay(); as day) {
+      <app-trip-map [day]="day" [selectedItemId]="selectedItemId()" (itemSelect)="selectItem($event)" />
+    }
+  </main>
+
+  @if (trip()) {
+    <nav class="mobile-nav" [attr.aria-label]="i18n.messages().planner.panels">
+      <button type="button" [class.active]="panel() === 'route'" [attr.aria-pressed]="panel() === 'route'" (click)="showPanel('route')">
+        <tui-icon icon="@tui.route" />
+        {{ i18n.messages().planner.route }}
+      </button>
+      <button type="button" [class.active]="panel() === 'map'" [attr.aria-pressed]="panel() === 'map'" (click)="showPanel('map')">
+        <tui-icon icon="@tui.map" />
+        {{ i18n.messages().planner.map }}
+      </button>
+    </nav>
+  }
+</div>

@@ -16,13 +16,13 @@
 |---|---|
 | `shared/` | Общие TypeScript-типы (`Trip`, `DayPlan`, `ItineraryItem`, `Location`, …) |
 | `backend/` | Node.js, Express 5, Prisma 7, SQLite, Cursor SDK / OpenAI SDK |
-| `frontend/` | Next.js 16 (App Router), React 19, Tailwind CSS 4, shadcn/ui (Radix), React-Leaflet, Sonner |
+| `frontend/` | Angular 22, Taiga UI 5, Leaflet |
 
 Монорепозиторий на npm workspaces, весь код — TypeScript.
 
 ## Быстрый старт
 
-Требуется Node.js 20+.
+Требуется Node.js 22.22.3+ или 24.15+ (Angular 22 не стартует на более ранних версиях).
 
 ```bash
 # 1. Зависимости для всех пакетов
@@ -51,7 +51,7 @@ docker compose up --build -d
 ```
 
 - Интерфейс: http://localhost:3000, API: http://localhost:4000.
-- Если порты заняты, задайте другие: `FRONTEND_PORT=3100 BACKEND_PORT=4100 docker compose up --build -d` (в PowerShell — через `$env:FRONTEND_PORT=3100` перед командой). Адрес API встраивается во фронтенд при сборке, поэтому после смены `BACKEND_PORT` нужен `--build`.
+- Если порты заняты, задайте другие: `FRONTEND_PORT=3100 BACKEND_PORT=4100 docker compose up --build -d` (в PowerShell — через `$env:FRONTEND_PORT=3100` перед командой). Адрес API встраивается во фронтенд при сборке (`API_URL`), поэтому после смены `BACKEND_PORT` нужен `--build`.
 - База SQLite хранится в томе `backend-data` и переживает пересоздание контейнеров. Миграции применяются автоматически при старте бэкенда.
 - Ключи из `backend/.env` передаются в контейнер как переменные окружения и в образ не попадают.
 - Остановить: `docker compose down`; удалить вместе с базой: `docker compose down -v`.
@@ -71,11 +71,9 @@ docker compose up --build -d
 | `GEOCODER_ENABLED` | `0` — отключить уточнение координат через Nominatim |
 | `NOMINATIM_USER_AGENT` | User-Agent с контактом — требование политики Nominatim |
 
-### Фронтенд (`frontend/.env.local`)
+### Фронтенд
 
-| Переменная | Назначение |
-|---|---|
-| `NEXT_PUBLIC_API_URL` | Адрес API, по умолчанию `http://localhost:4000` |
+Адрес API задаётся в [`frontend/src/environments/environment.ts`](frontend/src/environments/environment.ts) (`apiUrl`, по умолчанию `http://localhost:4000`). В Docker то же значение приходит аргументом сборки `API_URL`.
 
 ## API
 
@@ -107,9 +105,9 @@ backend/
   src/routes/      HTTP-роуты
   src/services/    генерация, геокодер, кластеризация, работа с БД
 frontend/
-  src/app/         страницы Next.js
-  src/components/  дашборд, таймлайн, карта, форма, список маршрутов
-  src/lib/         API-клиент, подписи, форматирование
+  src/app/core/http/     базовый URL и разбор ошибок HTTP
+  src/app/pages/planner/ страница: форма, таймлайн, карта Leaflet, список маршрутов, signal-store
+  src/environments/      адрес API
 ```
 
 ## Скрипты
@@ -117,6 +115,6 @@ frontend/
 | Команда | Что делает |
 |---|---|
 | `npm run dev:backend` | API в режиме наблюдения за файлами |
-| `npm run dev:frontend` | Next.js dev-сервер |
+| `npm run dev:frontend` | Angular dev-сервер |
 | `npm run typecheck` | Проверка типов во всех пакетах |
 | `npm run prisma:studio --workspace backend` | Просмотр БД в браузере |

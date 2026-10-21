@@ -1,0 +1,60 @@
+:host {
+  display: block;
+  width: min(100%, 26rem);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.25rem;
+  border: 1px solid var(--tui-border-normal, #e5e7eb);
+  border-radius: 1rem;
+  background: var(--tui-background-elevation-1, #fff);
+}
+
+h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+header p {
+  margin: 0.35rem 0 0;
+  color: var(--tui-text-secondary, #667);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+}
+
+.switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
+  padding: 0.25rem;
+  border-radius: 0.7rem;
+  background: var(--tui-background-neutral-1, #eef2ff);
+}
+
+.switch button {
+  min-height: 2.25rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--tui-text-secondary, #667085);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.switch button.active {
+  background: var(--tui-background-elevation-1, #fff);
+  color: var(--tui-text-action, #526ed3);
+}
+
+button[type='submit'] {
+  width: 100%;
+}

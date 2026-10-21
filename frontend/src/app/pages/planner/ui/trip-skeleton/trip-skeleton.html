@@ -1,0 +1,19 @@
+<div aria-busy="true" aria-live="polite">
+  <p class="stage"><tui-loader size="xs" [inheritColor]="true" /> {{ stages()[stage()] }}</p>
+  <div class="tabs">
+    @for (item of placeholders; track item) {
+      <span class="tab" [tuiSkeleton]="true"></span>
+    }
+  </div>
+  @for (item of placeholders; track item) {
+    <div class="row">
+      <span class="dot" [tuiSkeleton]="true"></span>
+      <div class="card">
+        <span class="line short" [tuiSkeleton]="true"></span>
+        <span class="line medium" [tuiSkeleton]="true"></span>
+        <span class="line" [tuiSkeleton]="true"></span>
+        <span class="line long" [tuiSkeleton]="true"></span>
+      </div>
+    </div>
+  }
+</div>

@@ -2,11 +2,14 @@ import OpenAI from 'openai';
 import {
   LOCATION_TYPES,
   TRANSPORT_MODES,
+  isLocale,
   type GenerateTripRequest,
+  type Locale,
   type LocationType,
   type TransportMode,
 } from '@travel/shared';
-import { HttpError } from '../errors.js';
+import { dayTitle, outputLanguage } from './phrases.js';
+import { HttpError, throwIfAborted } from '../errors.js';
 import { generateWithCursor } from './cursorProvider.js';
 import { mockItinerary } from './mockItinerary.js';
 
@@ -65,7 +68,8 @@ const ITINERARY_SCHEMA = {
                 transport: {
                   type: 'string',
                   enum: [...TRANSPORT_MODES],
-                  description: 'Как добраться до этой точки от предыдущей',
+                  description:
+                    'Как добраться от предыдущей точки. Первая точка дня — walk. До 1,5 км — walk. metro и train только на длинном переходе.',
                 },
                 notes: { type: ['string', 'null'] },
                 location: {
@@ -73,12 +77,12 @@ const ITINERARY_SCHEMA = {
                   additionalProperties: false,
                   required: ['name', 'description', 'type', 'address', 'lat', 'lng'],
                   properties: {
-                    name: { type: 'string' },
+                    name: { type: 'string', description: 'Официальное имя существующего места, без общих формулировок' },
                     description: { type: 'string' },
                     type: { type: 'string', enum: [...LOCATION_TYPES] },
-                    address: { type: ['string', 'null'] },
-                    lat: { type: 'number', description: 'Широта WGS84' },
-                    lng: { type: 'number', description: 'Долгота WGS84' },
+                    address: { type: ['string', 'null'], description: 'Улица и номер дома. null, только если адреса нет' },
+                    lat: { type: 'number', description: 'Черновая широта WGS84. Название и адрес важнее' },
+                    lng: { type: 'number', description: 'Черновая долгота WGS84. Название и адрес важнее' },
                   },
                 },
               },
@@ -90,14 +94,21 @@ const ITINERARY_SCHEMA = {
   },
 } as const;
 
-const SYSTEM_PROMPT = `Ты — опытный тревел-планировщик. Составляй реалистичные маршруты по реально существующим местам.
+const SYSTEM_PROMPT = `Ты — опытный тревел-планировщик. Составляй маршруты только по реально существующим местам.
 Правила:
-- Используй только реальные места с точными координатами WGS84 (lat/lng), проверенными по твоим знаниям.
+- В name — официальное имя места. В address — улица и номер дома. Не пиши расплывчатые названия вроде «кафе в центре» и не подменяй место другим с похожим именем.
+- lat и lng — черновые. Важнее точные name и address: по ним координаты уточнит геокодер.
 - В каждом дне 4–7 точек: достопримечательности, еда (обед и ужин), отдых.
-- Точки одного дня должны быть географически близки друг к другу, чтобы минимизировать переезды.
-- Время в формате HH:mm, в хронологическом порядке, день начинается около 09:00 и заканчивается до 22:00.
-- transport — способ добраться до точки от предыдущей; для первой точки дня укажи "walk".
-- Описания пиши на русском языке, 1–2 предложения.`;
+- Точки одного дня географически близки, чтобы не устраивать долгие переезды.
+- Время в формате HH:mm, по возрастанию. День примерно с 09:00 до 22:00.
+- transport — способ добраться до точки от предыдущей. Для первой точки дня всегда "walk".
+- До ~1,5 км между соседними точками ставь "walk". "bike", "bus", "taxi" и "car" — когда пешком уже долго. "metro" и "train" — только если пеший переход явно большой и такой транспорт в этом городе есть. "plane" и "ferry" — только между разными городами или берегами, не внутри прогулки по центру.
+- Если в запросе есть пожелания пользователя, они обязательны и важнее этих порогов.`;
+
+function systemPrompt(locale: Locale): string {
+  return `${SYSTEM_PROMPT}
+- title, названия дней, name, description и notes пиши на ${outputLanguage(locale)} языке. Описания — 1–2 предложения.`;
+}
 
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -130,7 +141,7 @@ function getClient(apiKey: string): OpenAI {
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
 
-function validateItinerary(data: unknown, durationDays: number): GeneratedItinerary {
+function validateItinerary(data: unknown, durationDays: number, locale: Locale): GeneratedItinerary {
   const rawDays = isObject(data) && Array.isArray(data.days) ? data.days : [];
   if (rawDays.length === 0) {
     throw new HttpError(502, 'Модель вернула пустой план');
@@ -177,7 +188,7 @@ function validateItinerary(data: unknown, durationDays: number): GeneratedItiner
     if (items.length === 0) {
       throw new HttpError(502, `День ${dayIdx + 1}: нет локаций с корректными данными`);
     }
-    const title = isObject(day) && typeof day.title === 'string' ? day.title : `День ${dayIdx + 1}`;
+    const title = isObject(day) && typeof day.title === 'string' ? day.title : dayTitle(locale, dayIdx + 1);
     return { dayNumber: dayIdx + 1, title, items };
   });
 
@@ -185,50 +196,65 @@ function validateItinerary(data: unknown, durationDays: number): GeneratedItiner
   return { title, days };
 }
 
-function buildUserPrompt(req: GenerateTripRequest): string {
-  return [
+function buildUserPrompt(req: GenerateTripRequest, locale: Locale): string {
+  const preferences = req.preferences?.trim();
+  const lines = [
     `Город: ${req.destination}`,
     `Количество дней: ${req.durationDays}`,
-    `Интересы: ${req.preferences?.trim() || 'классический туристический маршрут'}`,
     `Верни ровно ${req.durationDays} дн. с dayNumber от 1 до ${req.durationDays}.`,
-  ].join('\n');
+    `Язык пользовательских текстов (title, названия дней, name, description, notes): ${outputLanguage(locale)}.`,
+  ];
+  if (preferences) {
+    lines.push(`Пожелания пользователя обязательны и важнее типового выбора transport: ${preferences}`);
+  } else {
+    lines.push('Интересы: классический туристический маршрут.');
+  }
+  return lines.join('\n');
 }
 
-export async function generateItinerary(req: GenerateTripRequest): Promise<GeneratedItinerary> {
+export async function generateItinerary(req: GenerateTripRequest, signal?: AbortSignal): Promise<GeneratedItinerary> {
+  throwIfAborted(signal);
+  const locale = isLocale(req.locale) ? req.locale : 'ru';
   if (process.env.OPENAI_MOCK === '1') {
-    return validateItinerary(mockItinerary(req), req.durationDays);
+    return validateItinerary(mockItinerary(req), req.durationDays, locale);
   }
 
   const provider = resolveProvider();
+  const userPrompt = buildUserPrompt(req, locale);
   const raw =
     provider.name === 'cursor'
       ? await generateWithCursor({
           apiKey: provider.apiKey,
-          systemPrompt: SYSTEM_PROMPT,
-          userPrompt: buildUserPrompt(req),
+          systemPrompt: systemPrompt(locale),
+          userPrompt,
           schema: ITINERARY_SCHEMA,
+          signal,
         })
-      : await generateWithOpenAI(provider.apiKey, buildUserPrompt(req));
+      : await generateWithOpenAI(provider.apiKey, systemPrompt(locale), userPrompt, signal);
 
-  return validateItinerary(raw, req.durationDays);
+  return validateItinerary(raw, req.durationDays, locale);
 }
 
-async function generateWithOpenAI(apiKey: string, userPrompt: string): Promise<unknown> {
+async function generateWithOpenAI(apiKey: string, system: string, userPrompt: string, signal?: AbortSignal): Promise<unknown> {
+  throwIfAborted(signal);
   const openai = getClient(apiKey);
   const model = process.env.OPENAI_MODEL ?? 'gpt-4o-mini';
 
-  const completion = await openai.chat.completions.create({
-    model,
-    temperature: 0.7,
-    messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: userPrompt },
-    ],
-    response_format: {
-      type: 'json_schema',
-      json_schema: { name: 'itinerary', strict: true, schema: ITINERARY_SCHEMA },
+  const completion = await openai.chat.completions.create(
+    {
+      model,
+      temperature: 0.7,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: userPrompt },
+      ],
+      response_format: {
+        type: 'json_schema',
+        json_schema: { name: 'itinerary', strict: true, schema: ITINERARY_SCHEMA },
+      },
     },
-  });
+    { signal },
+  );
 
   const message = completion.choices[0]?.message;
   if (message?.refusal) {

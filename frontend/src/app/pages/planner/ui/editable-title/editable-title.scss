@@ -1,0 +1,53 @@
+:host {
+  display: block;
+  min-width: 0;
+}
+
+input,
+button {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 650;
+  text-align: left;
+}
+
+input {
+  border-radius: 0.25rem;
+  outline: 2px solid var(--tui-border-focus, #526ed3);
+  outline-offset: 2px;
+}
+
+button {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+tui-icon {
+  flex: 0 0 auto;
+  opacity: 0;
+}
+
+button:hover tui-icon,
+button:focus-visible tui-icon {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  tui-icon {
+    opacity: 0.55;
+  }
+}

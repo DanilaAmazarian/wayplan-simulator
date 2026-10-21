@@ -1,0 +1,16 @@
+@if (editing()) {
+  <input
+    #titleInput
+    [value]="draft()"
+    [maxLength]="maxLength"
+    [attr.aria-label]="i18n.messages().editable.label"
+    (input)="draft.set($any($event.target).value)"
+    (blur)="finish(true)"
+    (keydown)="onKeydown($event)"
+  />
+} @else {
+  <button type="button" [title]="value() + '\n' + i18n.messages().editable.hint" (click)="startEditing()">
+    <span>{{ value() }}</span>
+    <tui-icon icon="@tui.pencil" />
+  </button>
+}

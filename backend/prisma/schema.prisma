@@ -12,13 +12,28 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  trips Trip[]
+  trips    Trip[]
+  sessions Session[]
+}
+
+/// Сессия входа. В cookie лежит случайный токен, в БД — только его хеш.
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Trip {
@@ -33,13 +48,16 @@ model Trip {
   dayTitles   String?
   /// Маршрут добавлен пользователем в «Мои маршруты».
   saved       Boolean  @default(false)
+  /// Язык текстов маршрута (`ru` или `en`). Старые поездки остаются русскими.
+  locale      String   @default("ru")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   userId String?
   user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  items ItineraryItem[]
+  items  ItineraryItem[]
+  shares ShareLink[]
 
   @@index([userId])
   @@index([saved, updatedAt])
@@ -70,4 +88,17 @@ model ItineraryItem {
   trip   Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
 
   @@index([tripId, dayNumber, order])
+}
+
+/// Публичная ссылка на просмотр маршрута. Пока revokedAt пустой — ссылка активна.
+model ShareLink {
+  id        String    @id @default(cuid())
+  token     String    @unique
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  tripId String
+  trip   Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId])
 }

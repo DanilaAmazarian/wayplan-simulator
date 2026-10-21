@@ -1,13 +1,23 @@
 import { Router } from 'express';
-import type { GenerateTripRequest, UpdateTripRequest } from '@travel/shared';
+import { isLocale, type GenerateTripRequest, type UpdateTripRequest } from '@travel/shared';
 import { HttpError } from '../errors.js';
-import { deleteTrip, generateAndSaveTrip, getTrip, listTrips, updateTrip } from '../services/trips.js';
+import { clientAbortSignal } from '../http/abort.js';
+import { requireUser } from '../http/session.js';
+import {
+  createOrGetShareLink,
+  deleteTrip,
+  generateAndSaveTrip,
+  getTrip,
+  listTrips,
+  revokeShareLink,
+  updateTrip,
+} from '../services/trips.js';
 
 const MAX_DAYS = 14;
 const MAX_TITLE_LENGTH = 120;
 
 function parseGenerateRequest(body: unknown): GenerateTripRequest {
-  const { destination, durationDays, preferences } = (body ?? {}) as Record<string, unknown>;
+  const { destination, durationDays, preferences, locale } = (body ?? {}) as Record<string, unknown>;
 
   if (typeof destination !== 'string' || destination.trim().length < 2) {
     throw new HttpError(400, 'Поле destination обязательно (название города)');
@@ -19,11 +29,15 @@ function parseGenerateRequest(body: unknown): GenerateTripRequest {
   if (preferences !== undefined && typeof preferences !== 'string') {
     throw new HttpError(400, 'Поле preferences должно быть строкой');
   }
+  if (locale !== undefined && !isLocale(locale)) {
+    throw new HttpError(400, 'Поле locale должно быть ru или en');
+  }
 
   return {
     destination: destination.trim(),
     durationDays: days,
     preferences: preferences?.trim().slice(0, 1000),
+    locale: isLocale(locale) ? locale : 'ru',
   };
 }
 
@@ -47,31 +61,49 @@ function parseUpdateRequest(body: unknown): UpdateTripRequest {
   return update;
 }
 
+function actorId(req: { userId?: string }): string {
+  if (!req.userId) throw new HttpError(401, 'Нужно войти');
+  return req.userId;
+}
+
 export const tripsRouter = Router();
+
+tripsRouter.use(requireUser);
 
 tripsRouter.get('/', async (req, res) => {
   const { saved } = req.query;
-  res.json(await listTrips({ saved: saved === undefined ? undefined : saved === 'true' || saved === '1' }));
+  res.json(
+    await listTrips(actorId(req), { saved: saved === undefined ? undefined : saved === 'true' || saved === '1' }),
+  );
 });
 
 tripsRouter.post('/generate', async (req, res) => {
-  const trip = await generateAndSaveTrip(parseGenerateRequest(req.body));
+  const signal = clientAbortSignal(res);
+  const trip = await generateAndSaveTrip(parseGenerateRequest(req.body), actorId(req), signal);
+  if (signal.aborted || res.writableEnded) return;
   res.status(201).json(trip);
 });
 
 tripsRouter.get('/:id', async (req, res) => {
-  const trip = await getTrip(req.params.id);
+  const trip = await getTrip(req.params.id, actorId(req));
   if (!trip) throw new HttpError(404, 'Поездка не найдена');
   res.json(trip);
 });
 
 tripsRouter.patch('/:id', async (req, res) => {
-  const trip = await updateTrip(req.params.id, parseUpdateRequest(req.body));
-  if (!trip) throw new HttpError(404, 'Поездка не найдена');
-  res.json(trip);
+  res.json(await updateTrip(req.params.id, actorId(req), parseUpdateRequest(req.body)));
 });
 
 tripsRouter.delete('/:id', async (req, res) => {
-  if (!(await deleteTrip(req.params.id))) throw new HttpError(404, 'Поездка не найдена');
+  await deleteTrip(req.params.id, actorId(req));
+  res.status(204).end();
+});
+
+tripsRouter.post('/:id/share', async (req, res) => {
+  res.json(await createOrGetShareLink(req.params.id, actorId(req)));
+});
+
+tripsRouter.delete('/:id/share', async (req, res) => {
+  await revokeShareLink(req.params.id, actorId(req));
   res.status(204).end();
 });

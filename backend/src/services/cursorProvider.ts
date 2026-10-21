@@ -2,13 +2,14 @@ import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Agent } from '@cursor/sdk';
-import { HttpError } from '../errors.js';
+import { ClientDisconnectedError, HttpError, isAbortError, throwIfAborted } from '../errors.js';
 
 interface CursorGenerateOptions {
   apiKey: string;
   systemPrompt: string;
   userPrompt: string;
   schema: object;
+  signal?: AbortSignal;
 }
 
 /** Пустая рабочая папка: агенту не нужен доступ к файлам проекта. */
@@ -31,16 +32,19 @@ export function extractJson(text: string): unknown {
 }
 
 /**
- * Генерация через Cursor SDK. Структурированный вывод SDK не гарантирует,
- * поэтому схема передаётся в промпте, а результат валидируется вызывающим кодом.
+ * Генерация через Cursor SDK. `Agent.prompt` нельзя прервать,
+ * поэтому агент создаётся явно и на обрыв клиента вызывается `run.cancel()`.
+ * Схема в промпте: SDK не гарантирует структурированный вывод, результат проверяет вызывающий код.
  */
 export async function generateWithCursor({
   apiKey,
   systemPrompt,
   userPrompt,
   schema,
+  signal,
 }: CursorGenerateOptions): Promise<unknown> {
   mkdirSync(AGENT_CWD, { recursive: true });
+  throwIfAborted(signal);
 
   const prompt = [
     systemPrompt,
@@ -52,20 +56,44 @@ export async function generateWithCursor({
     userPrompt,
   ].join('\n');
 
-  const result = await Agent.prompt(prompt, {
+  const agent = await Agent.create({
     apiKey,
     model: { id: process.env.CURSOR_MODEL ?? 'composer-2.5' },
     name: 'AI Travel Planner — itinerary',
-    tools: [],
+    tools: ['webSearch'],
     local: { cwd: AGENT_CWD, settingSources: [] },
   });
 
-  if (result.status !== 'finished') {
-    throw new HttpError(502, `Cursor: генерация завершилась со статусом "${result.status}"${result.error ? `: ${result.error.message}` : ''}`);
-  }
-  if (!result.result) {
-    throw new HttpError(502, 'Пустой ответ от Cursor');
-  }
+  let onAbort: (() => void) | undefined;
+  try {
+    throwIfAborted(signal);
+    const run = await agent.send(prompt);
+    onAbort = () => {
+      if (!run.supports('cancel')) return;
+      void run.cancel().catch((error: unknown) => {
+        console.warn('[cursor] не удалось отменить генерацию', error);
+      });
+    };
+    if (signal?.aborted) onAbort();
+    else signal?.addEventListener('abort', onAbort, { once: true });
 
-  return extractJson(result.result);
+    const result = await run.wait();
+    if (signal?.aborted || result.status === 'cancelled') throw new ClientDisconnectedError();
+    if (result.status !== 'finished') {
+      throw new HttpError(
+        502,
+        `Cursor: генерация завершилась со статусом "${result.status}"${result.error ? `: ${result.error.message}` : ''}`,
+      );
+    }
+    if (!result.result) throw new HttpError(502, 'Пустой ответ от Cursor');
+    return extractJson(result.result);
+  } catch (error) {
+    if (signal?.aborted || isAbortError(error)) throw new ClientDisconnectedError();
+    throw error;
+  } finally {
+    if (onAbort) signal?.removeEventListener('abort', onAbort);
+    await agent[Symbol.asyncDispose]().catch((error: unknown) => {
+      console.warn('[cursor] не удалось закрыть агента', error);
+    });
+  }
 }

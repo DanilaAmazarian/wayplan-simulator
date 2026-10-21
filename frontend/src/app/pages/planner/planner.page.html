@@ -1,0 +1,132 @@
+<div class="layout" [class.has-trip]="!!store.trip()" [class.panel-map]="panel() === 'map'">
+  <aside>
+    <header>
+      <div class="brand">
+        <span class="logo"><tui-icon icon="@tui.plane" /></span>
+        <div class="titles">
+          <p>AI Travel Planner</p>
+          @if (store.trip(); as trip) {
+            @if (trip.owned === false) {
+              <h1>{{ trip.title }}</h1>
+            } @else {
+              <app-editable-title [value]="trip.title" (save)="store.rename($event)" />
+            }
+          } @else {
+            <h1>{{ i18n.messages().planner.newTrip }}</h1>
+          }
+        </div>
+      </div>
+      <div class="header-side">
+        <app-locale-switch />
+        <div class="account">
+          @if (store.user(); as user) {
+            <span [title]="user.email">{{ user.email }}</span>
+          }
+          <button tuiButton appearance="flat" size="s" type="button" [disabled]="store.authBusy()" (click)="store.logout()">
+            {{ i18n.messages().planner.logout }}
+          </button>
+        </div>
+        @if (store.trip(); as trip) {
+          <div class="actions">
+            @if (trip.owned !== false) {
+              <button
+                tuiButton
+                size="s"
+                type="button"
+                [appearance]="trip.saved ? 'secondary' : 'primary'"
+                [disabled]="store.saving()"
+                [attr.aria-pressed]="trip.saved"
+                [title]="trip.saved ? i18n.messages().planner.unsaveTitle : i18n.messages().planner.saveTitle"
+                [iconStart]="store.saving() ? '@tui.loader' : trip.saved ? '@tui.bookmark-check' : '@tui.bookmark'"
+                (click)="store.toggleSaved()"
+              >
+                {{ trip.saved ? i18n.messages().planner.saved : i18n.messages().planner.save }}
+              </button>
+              <button
+                tuiButton
+                appearance="outline"
+                size="s"
+                type="button"
+                iconStart="@tui.share-2"
+                [attr.aria-pressed]="store.shareOpen()"
+                [disabled]="store.shareBusy()"
+                [title]="store.shareToken() ? i18n.messages().planner.shareActiveTitle : i18n.messages().planner.shareTitle"
+                (click)="store.toggleShare()"
+              >
+                {{ store.shareToken() ? i18n.messages().planner.shareActive : i18n.messages().planner.share }}
+              </button>
+            }
+            <button tuiButton appearance="outline" size="s" type="button" iconStart="@tui.plus" (click)="startNew()">
+              {{ i18n.messages().planner.fresh }}
+            </button>
+          </div>
+        }
+      </div>
+    </header>
+
+    @if (store.shareOpen() && store.trip()?.owned !== false) {
+      <div class="share-panel">
+        @if (store.shareToken()) {
+          <label>
+            {{ i18n.messages().planner.shareForFriends }}
+            <input #linkField readonly [value]="store.shareUrl()" [attr.aria-label]="i18n.messages().planner.shareLinkLabel" />
+          </label>
+          <div class="share-actions">
+            <button tuiButton appearance="primary" size="s" type="button" [disabled]="store.shareBusy()" (click)="store.copyShare(linkField)">
+              {{ i18n.messages().planner.copy }}
+            </button>
+            <button tuiButton appearance="outline" size="s" type="button" [disabled]="store.shareBusy()" (click)="store.revokeShare()">
+              {{ i18n.messages().planner.revoke }}
+            </button>
+          </div>
+        } @else {
+          <p>{{ i18n.messages().planner.preparingLink }}</p>
+        }
+      </div>
+    }
+
+    <tui-scrollbar class="scroll">
+      <div class="content">
+        @if (store.trip(); as trip) {
+          <app-day-timeline
+            [trip]="trip"
+            [activeDay]="store.activeDay()"
+            [selectedItemId]="store.selectedItemId()"
+            (dayChange)="store.setActiveDay($event)"
+            (itemSelect)="pickItem($event)"
+          />
+        } @else if (store.loadingFromUrl()) {
+          <app-trip-skeleton />
+        } @else {
+          <app-trip-form
+            [loading]="store.loading()"
+            (submitted)="store.generate($event)"
+            (cancelled)="store.cancelGenerate()"
+          />
+          @if (store.loading()) {
+            <app-trip-skeleton />
+          } @else {
+            <app-saved-trips [trips]="store.savedTrips()" (openTrip)="store.openSaved($event)" (deleteTrip)="store.deleteSaved($event)" />
+          }
+        }
+      </div>
+    </tui-scrollbar>
+  </aside>
+
+  <main >
+    <app-trip-map [day]="store.currentDay()" [selectedItemId]="store.selectedItemId()" (itemSelect)="pickItem($event)" />
+  </main>
+
+  @if (store.trip()) {
+    <nav class="mobile-nav" [attr.aria-label]="i18n.messages().planner.panels">
+      <button type="button" [class.active]="panel() === 'route'" [attr.aria-pressed]="panel() === 'route'" (click)="showPanel('route')">
+        <tui-icon icon="@tui.route" />
+        {{ i18n.messages().planner.route }}
+      </button>
+      <button type="button" [class.active]="panel() === 'map'" [attr.aria-pressed]="panel() === 'map'" (click)="showPanel('map')">
+        <tui-icon icon="@tui.map" />
+        {{ i18n.messages().planner.map }}
+      </button>
+    </nav>
+  }
+</div>

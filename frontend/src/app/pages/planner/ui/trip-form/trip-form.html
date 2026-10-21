@@ -1,0 +1,58 @@
+<form class="card" (submit)="submit($event)">
+  <header>
+    <h2>{{ i18n.messages().tripForm.title }}</h2>
+    <p>{{ i18n.messages().tripForm.hint }}</p>
+  </header>
+
+  <div class="field">
+    <tui-textfield iconStart="@tui.map-pin">
+      <label tuiLabel>{{ i18n.messages().tripForm.city }}</label>
+      <input tuiInput [formField]="generateForm.destination" [placeholder]="i18n.messages().tripForm.cityPlaceholder" autocomplete="off" />
+    </tui-textfield>
+    <tui-error [error]="fieldError(generateForm.destination(), destinationErrors())" />
+  </div>
+
+  <div class="days">
+    <div class="days-label">
+      <span><tui-icon icon="@tui.calendar-days" /> {{ i18n.messages().tripForm.duration }}</span>
+      <strong>{{ dayLabel() }}</strong>
+    </div>
+    <input
+      tuiSlider
+      type="range"
+      min="1"
+      [max]="maxDays"
+      step="1"
+      [value]="model().durationDays"
+      [disabled]="loading()"
+      [attr.aria-label]="i18n.messages().tripForm.daysLabel"
+      (input)="setDays($event)"
+    />
+    <div class="scale"><span>1</span><span>7</span><span>{{ maxDays }}</span></div>
+  </div>
+
+  <div class="field">
+    <tui-textfield iconStart="@tui.sparkles">
+      <label tuiLabel>{{ i18n.messages().tripForm.preferences }}</label>
+      <textarea
+        tuiTextarea
+        [formField]="generateForm.preferences"
+        [placeholder]="i18n.messages().tripForm.preferencesPlaceholder"
+        [minRows]="4"
+      ></textarea>
+    </tui-textfield>
+    <tui-error [error]="fieldError(generateForm.preferences(), preferencesErrors())" />
+  </div>
+
+  @if (loading()) {
+    <button tuiButton type="button" appearance="outline" size="l" [attr.aria-label]="i18n.messages().tripForm.cancel" (click)="cancelled.emit()">
+      {{ i18n.messages().tripForm.cancelButton }}
+    </button>
+  } @else {
+    <button tuiButton type="submit" size="l">
+      <tui-icon icon="@tui.sparkles" />
+      {{ i18n.messages().tripForm.submit }}
+    </button>
+  }
+</form>
+
