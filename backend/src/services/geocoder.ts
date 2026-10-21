@@ -13,7 +13,9 @@ const BASE_URL = process.env.NOMINATIM_URL ?? 'https://nominatim.openstreetmap.o
 const USER_AGENT =
   process.env.NOMINATIM_USER_AGENT ?? 'AI-Travel-Planner/0.1 (local development)';
 const MIN_INTERVAL_MS = 1000;
-const REQUEST_TIMEOUT_MS = 10_000;
+const REQUEST_TIMEOUT_MS = 5_000;
+/** Дольше не держим ответ: остальные точки остаются с координатами модели. */
+const BUDGET_MS = 30_000;
 /** Точка дальше этого расстояния от центра города считается ошибочным совпадением. */
 const MAX_DISTANCE_FROM_CITY_KM = 50;
 
@@ -48,6 +50,17 @@ const sleep = (ms: number, signal?: AbortSignal) =>
     }
     signal?.addEventListener('abort', onAbort, { once: true });
   });
+
+class GeocoderDown extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'GeocoderDown';
+  }
+}
+
+function isTimeout(err: unknown): boolean {
+  return err instanceof Error && err.name === 'TimeoutError';
+}
 
 const cache = new Map<string, GeoResult | null>();
 let queue: Promise<unknown> = Promise.resolve();
@@ -98,6 +111,9 @@ async function search(
         ? AbortSignal.any([AbortSignal.timeout(REQUEST_TIMEOUT_MS), signal])
         : AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
+    if (res.status === 429 || res.status === 403 || res.status >= 500) {
+      throw new GeocoderDown(`Nominatim ответил ${res.status}`);
+    }
     if (!res.ok) throw new Error(`Nominatim ответил ${res.status}`);
     const places = (await res.json()) as NominatimPlace[];
     const place = places[0];
@@ -123,6 +139,9 @@ async function safeSearch(
     return await search(query, locale, viewbox, signal);
   } catch (err) {
     if (signal?.aborted || isAbortError(err)) throw err;
+    if (err instanceof GeocoderDown || isTimeout(err)) {
+      throw new GeocoderDown(err instanceof Error ? err.message : 'Nominatim недоступен');
+    }
     console.warn(`[geocoder] "${query}": ${(err as Error).message}`);
     return null;
   }
@@ -149,27 +168,39 @@ export async function refineCoordinates(
   if (process.env.GEOCODER_ENABLED === '0' || items.length === 0) return stats;
 
   throwIfAborted(signal);
-  const city = await safeSearch(destination, locale, undefined, signal);
+  const deadline = Date.now() + BUDGET_MS;
 
-  for (const item of items) {
-    throwIfAborted(signal);
-    const { name, address } = item.location;
-    const queries = [`${name}, ${destination}`, address ? `${address}, ${destination}` : null].filter(
-      (q): q is string => q !== null,
-    );
+  try {
+    const city = await safeSearch(destination, locale, undefined, signal);
 
-    for (const query of queries) {
+    for (const item of items) {
       throwIfAborted(signal);
-      const found = await safeSearch(query, locale, city?.boundingBox, signal);
-      if (!found) continue;
-      if (city && haversineKm(found.coordinates, city.coordinates) > MAX_DISTANCE_FROM_CITY_KM) continue;
+      if (Date.now() >= deadline) {
+        console.warn(`[geocoder] ${destination}: лимит ${BUDGET_MS / 1000} с, уточнено ${stats.geocoded} из ${stats.total}`);
+        break;
+      }
+      const { name, address } = item.location;
+      const queries = [`${name}, ${destination}`, address ? `${address}, ${destination}` : null].filter(
+        (q): q is string => q !== null,
+      );
 
-      item.location.lat = found.coordinates.lat;
-      item.location.lng = found.coordinates.lng;
-      item.location.geocoded = true;
-      stats.geocoded++;
-      break;
+      for (const query of queries) {
+        throwIfAborted(signal);
+        if (Date.now() >= deadline) break;
+        const found = await safeSearch(query, locale, city?.boundingBox, signal);
+        if (!found) continue;
+        if (city && haversineKm(found.coordinates, city.coordinates) > MAX_DISTANCE_FROM_CITY_KM) continue;
+
+        item.location.lat = found.coordinates.lat;
+        item.location.lng = found.coordinates.lng;
+        item.location.geocoded = true;
+        stats.geocoded++;
+        break;
+      }
     }
+  } catch (err) {
+    if (!(err instanceof GeocoderDown)) throw err;
+    console.warn(`[geocoder] ${destination}: остановлен (${err.message}), уточнено ${stats.geocoded} из ${stats.total}`);
   }
 
   console.log(`[geocoder] ${destination}: уточнено ${stats.geocoded} из ${stats.total} точек`);

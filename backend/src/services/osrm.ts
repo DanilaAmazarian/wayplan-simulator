@@ -9,7 +9,7 @@ import type { Coordinates, TransportMode } from '@travel/shared';
  */
 
 const USER_AGENT = process.env.OSRM_USER_AGENT ?? 'AI-Travel-Planner/0.1 (local development)';
-const REQUEST_TIMEOUT_MS = 10_000;
+const REQUEST_TIMEOUT_MS = 4_000;
 
 export type OsrmProfile = 'foot' | 'bike' | 'driving';
 

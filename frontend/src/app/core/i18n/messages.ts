@@ -147,7 +147,7 @@ const ru = {
     checkData: 'Проверьте данные',
   },
   errors: {
-    backendDown: 'Бэкенд недоступен ({url}). Запустите: npm run dev:backend',
+    backendDown: 'Бэкенд недоступен ({url}).',
     requestFailed: 'Ошибка запроса: {status}',
   },
   units: {
@@ -333,7 +333,7 @@ const en: Messages = {
     checkData: 'Check the data',
   },
   errors: {
-    backendDown: 'Backend is unavailable ({url}). Start it: npm run dev:backend',
+    backendDown: 'Backend is unavailable ({url}).',
     requestFailed: 'Request failed: {status}',
   },
   units: {

@@ -64,6 +64,10 @@ const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
 
 app.use(errorHandler);
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Backend listening on http://localhost:${PORT}`);
 });
+// Генерация недели ждёт модель и геокодер. Иначе Node обрывает долгое соединение через 5 минут.
+server.requestTimeout = 10 * 60 * 1000;
+server.headersTimeout = 10 * 60 * 1000;
+server.timeout = 0;

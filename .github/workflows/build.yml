@@ -1,0 +1,35 @@
+name: Сборка
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: build-main
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Собрать на сервере
+    runs-on: ubuntu-latest
+    steps:
+      - name: Подключиться и пересобрать контейнеры
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SSH_PRIVATE_KEY}" ] || [ -z "${SSH_HOST}" ] || [ -z "${SSH_USER}" ]; then
+            echo "Добавьте секреты репозитория: SSH_HOST, SSH_USER, SSH_PRIVATE_KEY"
+            exit 1
+          fi
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${SSH_PRIVATE_KEY}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh -i ~/.ssh/deploy_key \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=accept-new \
+            "${SSH_USER}@${SSH_HOST}" \
+            "bash -lc 'cd /opt/wayplan-simulator && git fetch origin main && git reset --hard origin/main && docker compose up --build -d'"

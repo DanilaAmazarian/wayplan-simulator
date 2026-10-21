@@ -15,7 +15,7 @@ services:
     volumes:
       - backend-data:/data
     ports:
-      - "${BACKEND_PORT:-4000}:4000"
+      - "${BACKEND_BIND:-0.0.0.0}:${BACKEND_PORT:-4000}:4000"
     restart: unless-stopped
 
   frontend:
@@ -23,11 +23,11 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
       args:
-        # Запросы к API идут из браузера, поэтому адрес — внешний порт бэкенда на хосте
-        API_URL: http://localhost:${BACKEND_PORT:-4000}
+        # Запросы к API идут из браузера. На сервере адрес задаётся в .env рядом с этим файлом.
+        API_URL: ${API_URL:-http://localhost:4000}
     image: wayplan-simulator/frontend
     ports:
-      - "${FRONTEND_PORT:-3000}:3000"
+      - "${FRONTEND_BIND:-0.0.0.0}:${FRONTEND_PORT:-3000}:3000"
     depends_on:
       backend:
         condition: service_healthy

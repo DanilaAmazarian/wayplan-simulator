@@ -9,7 +9,7 @@ import { haversineKm } from './geo.js';
 
 const BASE_URL = (process.env.TRANSIT_URL || 'https://api.transitous.org').replace(/\/$/, '');
 const USER_AGENT = process.env.TRANSIT_USER_AGENT ?? 'AI-Travel-Planner/0.1 (local development)';
-const REQUEST_TIMEOUT_MS = 10_000;
+const REQUEST_TIMEOUT_MS = 4_000;
 /** Ближе этого расстояния вход и выход считаются одной остановкой. */
 const SAME_STOP_KM = 0.3;
 

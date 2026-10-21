@@ -60,7 +60,9 @@ export async function generateWithCursor({
     apiKey,
     model: { id: process.env.CURSOR_MODEL ?? 'composer-2.5' },
     name: 'AI Travel Planner — itinerary',
-    tools: ['webSearch'],
+    // Пустой список отключает инструменты. С webSearch недельный маршрут
+    // занимает несколько минут и на сервере соединение обрывается.
+    tools: [],
     local: { cwd: AGENT_CWD, settingSources: [] },
   });
 
