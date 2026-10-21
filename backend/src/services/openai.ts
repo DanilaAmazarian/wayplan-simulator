@@ -8,6 +8,7 @@ import {
   type LocationType,
   type TransportMode,
 } from '@travel/shared';
+import type { PlaceDropReason } from './placeQuality.js';
 import { dayTitle, outputLanguage } from './phrases.js';
 import { HttpError, throwIfAborted } from '../errors.js';
 import { generateWithCursor } from './cursorProvider.js';
@@ -26,6 +27,8 @@ export interface GeneratedItem {
     lat: number;
     lng: number;
     geocoded?: boolean;
+    /** Место не попадёт в маршрут: фастфуд, ТЦ, стройка или закрытая площадка. */
+    dropReason?: PlaceDropReason;
   };
 }
 
@@ -77,10 +80,17 @@ const ITINERARY_SCHEMA = {
                   additionalProperties: false,
                   required: ['name', 'description', 'type', 'address', 'lat', 'lng'],
                   properties: {
-                    name: { type: 'string', description: 'Официальное имя существующего места, без общих формулировок' },
+                    name: {
+                      type: 'string',
+                      description:
+                        'Официальное имя одного существующего места. Не фастфуд, не сеть, не ТЦ, не стройка и не закрытая площадка',
+                    },
                     description: { type: 'string' },
                     type: { type: 'string', enum: [...LOCATION_TYPES] },
-                    address: { type: ['string', 'null'], description: 'Улица и номер дома. null, только если адреса нет' },
+                    address: {
+                      type: ['string', 'null'],
+                      description: 'Улица и дом именно этого места. null, если улица неизвестна. Не выдумывай адрес',
+                    },
                     lat: { type: 'number', description: 'Черновая широта WGS84. Название и адрес важнее' },
                     lng: { type: 'number', description: 'Черновая долгота WGS84. Название и адрес важнее' },
                   },
@@ -94,11 +104,14 @@ const ITINERARY_SCHEMA = {
   },
 } as const;
 
-const SYSTEM_PROMPT = `Ты — опытный тревел-планировщик. Составляй маршруты только по реально существующим местам.
+const SYSTEM_PROMPT = `Ты — опытный тревел-планировщик. Составляй маршруты только по реально существующим местам, которые можно посетить в этот день.
 Правила:
-- В name — официальное имя места. В address — улица и номер дома. Не пиши расплывчатые названия вроде «кафе в центре» и не подменяй место другим с похожим именем.
+- В name — официальное имя одного конкретного места. Не пиши «кафе в центре» и не подменяй место другим с похожим именем.
+- В address — улица и номер дома именно этого места. Если не уверен в улице, поставь null. Не выдумывай адрес.
 - lat и lng — черновые. Важнее точные name и address: по ним координаты уточнит геокодер.
-- В каждом дне 4–7 точек: достопримечательности, еда (обед и ужин), отдых.
+- В каждом дне 4–6 точек. Утро — прогулка и достопримечательности, затем обед, снова места, вечером ужин.
+- Еда — одно место на обед и одно на ужин, не подряд. Это известное местное кафе или ресторан. Не фастфуд и не сеть: Rostic's, KFC, McDonald's, Burger King, «Вкусно — и точка», Subway, фудкорт.
+- Не предлагай торговые центры, рынки стройматериалов, гипермаркеты, бизнес-центры, жилые комплексы, стройки и закрытые площадки. Магазины — только известная улица, рынок или пассаж.
 - Точки одного дня географически близки, чтобы не устраивать долгие переезды.
 - Время в формате HH:mm, по возрастанию. День примерно с 09:00 до 22:00.
 - transport — способ добраться до точки от предыдущей. Для первой точки дня всегда "walk".
@@ -209,6 +222,7 @@ function buildUserPrompt(req: GenerateTripRequest, locale: Locale): string {
   } else {
     lines.push('Интересы: классический туристический маршрут.');
   }
+  lines.push('Без двух мест еды подряд, без фастфуда, торговых центров, строек и закрытых площадок.');
   return lines.join('\n');
 }
 
@@ -243,7 +257,7 @@ async function generateWithOpenAI(apiKey: string, system: string, userPrompt: st
   const completion = await openai.chat.completions.create(
     {
       model,
-      temperature: 0.7,
+      temperature: 0.4,
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: userPrompt },

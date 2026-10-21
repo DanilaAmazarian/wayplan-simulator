@@ -20,10 +20,12 @@ import type { ItineraryItem as DbItem, Trip as DbTrip } from '../../generated/pr
 import { prisma } from '../db.js';
 import { HttpError, throwIfAborted } from '../errors.js';
 import { refineCoordinates } from './geocoder.js';
-import { haversineKm, nearestNeighborOrder } from './geo.js';
+import { haversineKm } from './geo.js';
+import { optimizeDay } from './itineraryOrder.js';
+import { requestedPlaceKinds, unwantedName } from './placeQuality.js';
 import { roadProfile, routeLegs, type OsrmProfile } from './osrm.js';
 import { describeRide, isTransitTransport } from './transit.js';
-import type { GeneratedDay, GeneratedItem } from './openai.js';
+import type { GeneratedDay } from './openai.js';
 import { generateItinerary } from './openai.js';
 
 type DbTripWithItems = DbTrip & { items: DbItem[]; shares?: { token: string }[] };
@@ -40,22 +42,6 @@ const ownerTripInclude = {
 };
 
 const toIsoDate = (d: Date) => d.toISOString().slice(0, 10);
-
-/**
- * Переупорядочивает точки дня по географической близости.
- * Временные слоты, предложенные моделью, сохраняются и раздаются точкам в новом порядке.
- */
-export function optimizeDay(items: GeneratedItem[]): GeneratedItem[] {
-  const chronological = [...items].sort((a, b) => a.startTime.localeCompare(b.startTime));
-  const slots = chronological.map(({ startTime, endTime }) => ({ startTime, endTime }));
-  const ordered = nearestNeighborOrder(chronological, (it) => it.location);
-
-  return ordered.map((it, idx) => ({
-    ...it,
-    ...slots[idx]!,
-    transport: idx === 0 ? 'walk' : it.transport,
-  }));
-}
 
 function straightRoute(from: Coordinates, to: Coordinates, transport: TransportMode): Route {
   return {
@@ -301,8 +287,29 @@ export async function generateAndSaveTrip(
   const locale = isLocale(req.locale) ? req.locale : 'ru';
   const itinerary = await generateItinerary({ ...req, locale }, signal);
   throwIfAborted(signal);
-  await refineCoordinates(itinerary, req.destination, locale, signal);
+  const allow = requestedPlaceKinds(req.preferences);
+  for (const day of itinerary.days) {
+    for (const item of day.items) {
+      const reason = unwantedName(item.location.name);
+      if (reason && !allow.has(reason)) item.location.dropReason = reason;
+    }
+  }
+  await refineCoordinates(itinerary, req.destination, locale, signal, allow);
   throwIfAborted(signal);
+
+  const dropped = itinerary.days.flatMap((day) => day.items).filter((item) => item.location.dropReason);
+  if (dropped.length > 0) {
+    console.log(
+      `[places] отброшено ${dropped.length}: ${dropped.map((item) => `${item.location.name} (${item.location.dropReason})`).join(', ')}`,
+    );
+  }
+  itinerary.days = itinerary.days
+    .map((day) => ({ ...day, items: day.items.filter((item) => !item.location.dropReason) }))
+    .filter((day) => day.items.length > 0)
+    .map((day, index) => ({ ...day, dayNumber: index + 1 }));
+  if (itinerary.days.length === 0) {
+    throw new HttpError(502, 'Не удалось собрать маршрут из открытых мест. Попробуйте ещё раз.');
+  }
 
   const startDate = new Date(`${toIsoDate(new Date())}T00:00:00.000Z`);
   const endDate = new Date(startDate);
